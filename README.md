@@ -1,6 +1,22 @@
 # amozesh-entekhab-reshteh
 
-راهنمای جامع انتخاب رشته کنکور سراسری ایران، نوشته‌شده برای اینکه به یک هوش مصنوعی داده شود تا بتواند لیست ۱۵۰تایی انتخاب رشته بسازد.
+اسکیل (Agent Skill) برای ساختن لیست ۱۵۰تایی انتخاب رشتهٔ کنکور سراسری. ورودی‌هایش اکسل دفترچهٔ همان سال، اطلاعات داوطلب و بازهٔ «خوشبینانه / واقع‌بینانه / بدبینانه» است که مشاور تعیین می‌کند.
 
-- فایل اصلی: [konkur-field-selection-guide.md](konkur-field-selection-guide.md)
-- نحوه استفاده: فایل را به هوش مصنوعی بدهید، فرم «پیوست الف» را با اطلاعات کارنامه پر کنید و پرامپت «پیوست ج» را بفرستید. فایل اکسل کدرشته‌محل‌های گروه خودتان (همان قالب نمونه‌های ۱۴۰۴؛ توضیح در بخش ۱۷ راهنما) و آمار رتبه‌های قبولی سال قبل را هم پیوست کنید تا لیست دقیق‌تر شود.
+- **اسکیل:** [`.claude/skills/konkur-entekhab-reshteh/`](.claude/skills/konkur-entekhab-reshteh/)
+  - [`SKILL.md`](.claude/skills/konkur-entekhab-reshteh/SKILL.md): روند کار برای ایجنت
+  - [`references/rahnama-kamel.md`](.claude/skills/konkur-entekhab-reshteh/references/rahnama-kamel.md): راهنمای کامل انتخاب رشته (سهمیه‌ها، بومی‌گزینی، دوره‌ها، محرومیت‌ها، ساختار اکسل دفترچه)
+  - [`scripts/`](.claude/skills/konkur-entekhab-reshteh/scripts/): خواندن و وارسی اکسل (`inspect_booklet.py`) و ساخت لیست (`build_list.py`)
+  - [`assets/`](.claude/skills/konkur-entekhab-reshteh/assets/): فرم ورودی مشاور و نمونهٔ پروفایل
+- **فایل آماده برای نصب:** [`dist/konkur-entekhab-reshteh.skill`](dist/konkur-entekhab-reshteh.skill)
+- **نمونهٔ خروجی (دادهٔ ۱۴۰۴، داوطلب فرضی):** [`examples/`](examples/)
+
+## استفاده
+
+1. نصب:
+   - **Claude (claude.ai، اپ دسکتاپ و موبایل):** فایل `dist/konkur-entekhab-reshteh.skill` را در Settings ← Capabilities ← Skills بارگذاری کنید، یا روی دکمهٔ «Save skill» کارت فایل در گفتگو بزنید.
+   - **Claude Code روی همین مخزن:** نیازی به کاری نیست؛ اسکیل در `.claude/skills/` است و خودکار بارگذاری می‌شود.
+   - **ایجنت‌های دیگر:** پوشهٔ `.claude/skills/konkur-entekhab-reshteh` را در پوشهٔ اسکیل‌های ایجنت بگذارید.
+2. اکسل دفترچهٔ ۱۴۰۵ گروه داوطلب را به ایجنت بدهید، همراه با مشخصات داوطلب و بازهٔ مشاور (پرامپت آماده در پیوست ج راهنما).
+3. ایجنت اکسل را وارسی می‌کند، پروفایل را می‌سازد، لیست را به‌صورت xlsx و md تحویل می‌دهد و هشدارها را فهرست می‌کند.
+
+اسکریپت‌ها به Python 3 و کتابخانه‌های `pandas` و `openpyxl` نیاز دارند.
