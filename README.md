@@ -1,7 +1,19 @@
 # amozesh-entekhab-reshteh
 
-راهنمای جامع انتخاب رشته کنکور سراسری ایران، نوشته‌شده برای اینکه به یک هوش مصنوعی داده شود تا بتواند لیست ۱۵۰تایی انتخاب رشته بسازد.
+اسکیل (Agent Skill) برای ساختن لیست ۱۵۰تایی انتخاب رشتهٔ کنکور سراسری. ورودی‌هایش اکسل دفترچهٔ همان سال، اطلاعات داوطلب و بازهٔ «خوشبینانه / واقع‌بینانه / بدبینانه» است که مشاور تعیین می‌کند.
 
-- فایل اصلی: [konkur-field-selection-guide.md](konkur-field-selection-guide.md)
-- نمونهٔ لیست ۱۵۰تایی (داوطلب فرضی تجربی، دادهٔ ۱۴۰۴، فقط آموزشی): [examples/nemune-list-150-tajrobi-1404.md](examples/nemune-list-150-tajrobi-1404.md) و [نسخهٔ اکسل](examples/nemune-list-150-tajrobi-1404.xlsx)
-- نحوه استفاده: فایل را به هوش مصنوعی بدهید، فرم «پیوست الف» را با اطلاعات کارنامه پر کنید و پرامپت «پیوست ج» را بفرستید. فایل اکسل کدرشته‌محل‌های گروه خودتان (همان قالب نمونه‌های ۱۴۰۴؛ توضیح در بخش ۱۷ راهنما) و آمار رتبه‌های قبولی سال قبل را هم پیوست کنید تا لیست دقیق‌تر شود.
+- **اسکیل:** [`skills/konkur-entekhab-reshteh/`](skills/konkur-entekhab-reshteh/)
+  - [`SKILL.md`](skills/konkur-entekhab-reshteh/SKILL.md): روند کار برای ایجنت
+  - [`references/rahnama-kamel.md`](skills/konkur-entekhab-reshteh/references/rahnama-kamel.md): راهنمای کامل انتخاب رشته (سهمیه‌ها، بومی‌گزینی، دوره‌ها، محرومیت‌ها، ساختار اکسل دفترچه)
+  - [`scripts/`](skills/konkur-entekhab-reshteh/scripts/): خواندن و وارسی اکسل (`inspect_booklet.py`) و ساخت لیست (`build_list.py`)
+  - [`assets/`](skills/konkur-entekhab-reshteh/assets/): فرم ورودی مشاور و نمونهٔ پروفایل
+- **فایل آماده برای نصب:** [`dist/konkur-entekhab-reshteh.skill`](dist/konkur-entekhab-reshteh.skill)
+- **نمونهٔ خروجی (دادهٔ ۱۴۰۴، داوطلب فرضی):** [`examples/`](examples/)
+
+## استفاده
+
+1. فایل `.skill` را در Claude نصب کنید، یا پوشهٔ `skills/konkur-entekhab-reshteh` را در پوشهٔ اسکیل‌های ایجنت خود بگذارید.
+2. اکسل دفترچهٔ ۱۴۰۵ گروه داوطلب را به ایجنت بدهید، همراه با مشخصات داوطلب و بازهٔ مشاور (پرامپت آماده در پیوست ج راهنما).
+3. ایجنت اکسل را وارسی می‌کند، پروفایل را می‌سازد، لیست را به‌صورت xlsx و md تحویل می‌دهد و هشدارها را فهرست می‌کند.
+
+اسکریپت‌ها به Python 3 و کتابخانه‌های `pandas` و `openpyxl` نیاز دارند.
