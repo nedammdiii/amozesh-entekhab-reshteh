@@ -201,12 +201,27 @@ def main():
                   for r in range(1, sm.max_row + 1) if sm.cell(row=r, column=1).value == "جمع"]
         check(totals and all(t == (len(rows), total_cap) for t in totals),
               f"summary totals {totals} != {(len(rows), total_cap)}")
-        nahve = collections.Counter(r["نحوه پذیرش"] for r in rows)
+        # every line of every block, against final.json. A block whose lines
+        # do not add up hides a value COUNTIF cannot match (the empty-value bug).
+        field, lines = None, 0
         for r in range(1, sm.max_row + 1):
             k = sm.cell(row=r, column=1).value
-            if k in nahve:
-                check(sm.cell(row=r, column=2).value == nahve[k], f"summary {k!r} count off")
-        print(f"A: summary totals {totals[0] if totals else None} (final.json: {len(rows)}, {total_cap})")
+            if sm.cell(row=r, column=2).value == "تعداد کدرشته":
+                field = k.split(" (")[0]
+                cnt = collections.Counter(x[field] for x in rows)
+                cap = collections.Counter()
+                for x in rows:
+                    cap[x[field]] += x["ظرفیت کل"]
+                continue
+            if field is None or k in (None, "جمع"):
+                field = None if k == "جمع" else field
+                continue
+            key = "" if k.startswith("(خالی") else k
+            got = (sm.cell(row=r, column=2).value, sm.cell(row=r, column=3).value)
+            check(got == (cnt[key], cap[key]), f"summary {field}/{k!r}: {got} != {(cnt[key], cap[key])}")
+            lines += 1
+        print(f"A: summary totals {totals[0] if totals else None} (final.json: {len(rows)}, {total_cap})"
+              f" · {lines} summary lines checked")
 
     # ---- scenario B
     v = load_workbook(fb, data_only=True)

@@ -311,6 +311,9 @@ sm.column_dimensions["B"].width = 16
 sm.column_dimensions["C"].width = 18
 
 
+EMPTY_LABEL = "(خالی — در دفترچه درج نشده)"
+
+
 def block(title, field, values, row):
     c = sm.cell(row=row, column=1, value=title)
     c.font = Font(name=FONT, size=11, bold=True, color="FFFFFF")
@@ -323,9 +326,13 @@ def block(title, field, values, row):
     col_rng, caprng = rng(field), rng("ظرفیت کل")
     r = row + 1
     for v in values:
-        sm.cell(row=r, column=1, value=v).font = BODY_FONT
-        f1 = sm.cell(row=r, column=2, value=f'=COUNTIF({col_rng},A{r})')
-        f2 = sm.cell(row=r, column=3, value=f'=SUMIF({col_rng},A{r},{caprng})')
+        # An empty value (تجربی ۱۴۰۳: 73 شهید رجایی rows have no نحوه پذیرش) must
+        # not be written as an empty label: COUNTIF against a blank cell counts 0,
+        # and the block total silently came out 73 short. Name it and match "".
+        sm.cell(row=r, column=1, value=v or EMPTY_LABEL).font = BODY_FONT
+        crit = f"A{r}" if v else '""'
+        f1 = sm.cell(row=r, column=2, value=f'=COUNTIF({col_rng},{crit})')
+        f2 = sm.cell(row=r, column=3, value=f'=SUMIF({col_rng},{crit},{caprng})')
         for f in (f1, f2):
             f.font = BODY_FONT
             f.alignment = Alignment(horizontal="center")

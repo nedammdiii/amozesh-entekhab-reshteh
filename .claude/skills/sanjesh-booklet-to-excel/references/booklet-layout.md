@@ -26,6 +26,8 @@ structurally and let `validate.py` be the gate.
 9. [The سهمیه‌ای trap](#9-the-سهمیهای-trap)
 10. [Cell value vocabularies](#10-cell-value-vocabularies)
 11. [1404 regression baseline](#11-1404-regression-baseline)
+12. [The ۱۴۰۳ booklets](#12-the-۱۴۰۳-booklets--five-more-ways-a-booklet-can-differ)
+13. [A new year, or a new column](#13-a-new-year-or-a-new-column)
 
 ---
 
@@ -386,3 +388,57 @@ out to keep the cells empty rather than guess.
 | distinct عنوان رشته | 281 | 263 | 250 |
 | total ظرفیت کل | 366,340 | 363,258 | 344,169 |
 | empty نحوه پذیرش (شهید رجایی) | 73 | 485 | 41 |
+
+Re-verified end to end on the تجربی ۱۴۰۳ booklet (415 pp, kanoon reprint)
+after the choice list was added. `rows.json` came back identical and every
+number above matched. The run also caught a `make_xlsx` summary bug. The
+73 blank نحوه پذیرش rows were written as an empty label, `COUNTIF` against a
+blank cell counts 0, and the block total came out 73 short. Empty values are
+now labelled «(خالی …)» and matched with `""`, and `test_choice_list.py`
+checks every summary line against final.json.
+
+---
+
+## 13. A new year, or a new column
+
+Booklets change every year in ways nobody announces. §§2, 6 and 12 list the
+ones seen so far: split header words, section order, shaped glyphs, mirrored
+brackets, header-less tables, new layouts, repeated codes and the
+watermark. The scripts match structure rather than literals, and these gates
+catch the rest:
+
+| Gate | Script | Catches |
+|---|---|---|
+| `problems` | extract_rows | a header missing a needed role; a band holding several codes |
+| `header columns with no role` | extract_rows | **a column the scripts do not know** |
+| `MISSING CODES` / `EXTRA CODES` | validate | rows the geometry lost, or invented |
+| `CONFLICTING duplicate codes` | validate | one code with two different rows |
+| `rows with a blank required column` | validate | a section with no دوره column left `"dore": null`; a lost column |
+| `rows with no استان` | validate | a سهمیه-only university → `province_overrides` |
+| value inventories | validate | a wrong column mapping (word-salad in a low-cardinality column) |
+
+### When a booklet adds a column
+
+`map_header` gives every header column a role from `HEADER_SUBSTR`. A column
+matching none is **silently skipped**: its rows still extract and every other
+gate passes. That is why `extract_rows.py` lists such columns. When it reports
+one:
+
+1. Render a page it is on and read the column. Decoration (a merged outer
+   header, a watermark fragment) can be ignored. Data a student needs cannot,
+   for example a start term (مهر/بهمن, «شروع ۱۴۰۶») or a selection type.
+2. Add a role to `HEADER_SUBSTR` with a substring of the column's joined
+   header text (spaces removed). Check that no existing role's substrings
+   occur in it, and that its substring occurs in no existing header.
+   `map_header` takes the leftmost match, so an overlap such as
+   «دوره شروع» versus `"دوره"` steals the role.
+3. Read it in `extract()` with `cell("<role>")` into a new rows.json key.
+   Carry it through `build_table.py` (a new output key) and `make_xlsx.py`
+   (`DATA_COLS`, before «توضیحات» so the letters stay readable).
+   `verify_xlsx.py` reads the headers, so it checks the new column with no
+   change. Add it to the choice list's `LIST_COLS` only if a counsellor needs
+   it there.
+4. The `konkur-entekhab-reshteh` reader matches columns by name. It already
+   knows «شروع» / «زمان شروع» / «شروع تحصیل».
+5. Re-run the whole pipeline. `header columns with no role` must come back
+   0, and the ۱۴۰۳ / ۱۴۰۴ numbers must not move.

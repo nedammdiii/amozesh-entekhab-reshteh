@@ -135,13 +135,16 @@ scenarios on copies.
   - blank, not «0», for the empty توضیحات;
   - count 6 and remaining 144;
   - the text-entry warning;
-  - the summary totals equal final.json;
+  - every line of every summary block equal to final.json (count and
+    capacity), including a «(خالی …)» line for empty values;
   - no error value anywhere.
 - **B:** MAX+1 priorities. Expect count 151, remaining −1, the over-limit
   warning, and row 150 holding the 150th code.
 
 Mutation-checked when written. A wrong column letter, a priority left in the
-file and dropping `&""` each make the matching test fail.
+file and dropping `&""` each make the matching test fail. On the real تجربی
+۱۴۰۳ booklet the summary check also caught the empty-label bug, where the
+نحوه پذیرش block came out 73 short (see booklet-layout.md §11).
 
 ## 5. Downstream readers
 

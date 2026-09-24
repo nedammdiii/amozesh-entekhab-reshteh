@@ -96,9 +96,16 @@ python "$SK/scripts/extract_rows.py" --pdf BOOK.pdf --out "$W/rows.json" \
        --first 39 --last 403
 ```
 
-Expect `problems: 0` and `duplicate codes: 0`. A "N codes" problem means a row
-band swallowed several rows — a merged-cell case the code did not handle;
-render that page and investigate before going on.
+Expect `problems: 0`, `header columns with no role: 0`, and `duplicate codes:
+0` — or only codes the booklet itself prints twice, which `validate.py` then
+reports as identical repeats (تجربی ۱۴۰۳: 12028–12030). A "N codes" problem
+means a row band swallowed several rows — a merged-cell case the code did not
+handle; render that page and investigate before going on.
+
+A **header column with no role** is a column the scripts do not know: its rows
+still extract, so nothing else notices that its data is being dropped. A new
+year can add one (a start-term or selection-type column, say). Render a page
+it is on and follow `references/booklet-layout.md` §13 before going on.
 
 ### 4. Build the table
 
@@ -121,7 +128,10 @@ python "$SK/scripts/validate.py" --pdf BOOK.pdf --rows "$W/rows.json" \
        --final "$W/final.json" --first 39 --last 403
 ```
 
-**`MISSING CODES` must be 0 and the script must exit 0.** Do not proceed
+**`MISSING CODES` must be 0, every required column must be filled
+(`rows with a blank required column` all 0), and the script must exit 0.** A
+blank `دوره تحصیلی` almost always means a section without a دوره column got
+`"dore": null` in sections.json. Do not proceed
 otherwise.
 
 Then *read* the inventories it prints. `نحوه پذیرش` must have exactly two
@@ -157,7 +167,8 @@ The workbook has four sheets:
 The list title reads the گروه and year from `--title`; pass `--group` /
 `--year` when the title does not say them. `--max-choices` changes 150 if the
 form's cap ever changes. `--no-choice-list` writes the old three-sheet
-workbook — same cells, values and styles as before the list existed.
+workbook, the same as before the list existed. The only difference is that
+empty values now get their own «(خالی …)» line in the summary.
 
 **Read `references/choice-list.md` before touching any list formula.** It
 records why each one looks the way it does (the `&""`, the ROW() tie-break,
@@ -189,6 +200,24 @@ openpyxl file, not a LibreOffice re-save: the re-save is only for testing.
 
 Render at least three pages spread across different sections and compare them
 against the extracted rows for those pages. Only then hand the file over.
+
+## A new year's booklet (۱۴۰۵ and after)
+
+Nothing in the scripts is tied to a year. What changes is the booklet, so:
+
+1. **Write a new sections.json** from this booklet's `--headings` and
+   `--layouts`. Never reuse last year's page ranges; start from the closest
+   `assets/sections-*.json` only for its shape and `province_overrides`.
+2. Run every step above. The gates are what make an unseen booklet safe:
+   missing / conflicting codes, header problems, **header columns with no
+   role**, blank required columns, rows with no استان, and the value
+   inventories (a new دوره تحصیلی value is fine; word-salad is not).
+3. When a gate fails, read `references/booklet-layout.md` first — §12 lists
+   the ways ۱۴۰۳ differed from ۱۴۰۴ and §13 what to do when a booklet adds a
+   column. Fix structurally; never special-case a page number.
+4. When everything passes, save the config as
+   `assets/sections-<year>-<group>.json` and add a baseline row to the
+   reference, so the next year has one more worked example.
 
 ## What to tell the user
 

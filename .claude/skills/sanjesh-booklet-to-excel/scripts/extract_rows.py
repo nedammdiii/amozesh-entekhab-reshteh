@@ -162,7 +162,8 @@ def is_header_band(words):
     return ("کدرشته" in flat or "کد" in t) and len(t & HEADER_MARKERS) >= 2
 
 
-def map_header(words, bounds):
+def header_text(words, bounds):
+    """Each column's header text: its words joined line by line, RTL, no spaces."""
     def col_of(w):
         for i in range(len(bounds) - 1):
             if bounds[i] - 1 <= w["cx"] <= bounds[i + 1] + 1:
@@ -176,9 +177,12 @@ def map_header(words, bounds):
             joined[c].append(w)
     # line first, then right-to-left inside the line: «کد رشته» sits on the top
     # line and «محل» on the one below, so a pure x sort would interleave them.
-    text = {c: "".join(x["text"] for x in sorted(ws, key=lambda x: (round(x["y0"] / 6), -x["x0"])))
+    return {c: "".join(x["text"] for x in sorted(ws, key=lambda x: (round(x["y0"] / 6), -x["x0"])))
             for c, ws in joined.items()}
 
+
+def map_header(words, bounds):
+    text = header_text(words, bounds)
     found = {}
     for role, subs in HEADER_SUBSTR.items():
         for sub in subs:
@@ -198,6 +202,10 @@ def map_header(words, bounds):
 def extract(pdf, first, last):
     doc = open_doc(pdf)
     rows, problems = [], []
+    # header text of columns that took no role -> pages. A new booklet can add
+    # a column (a start-term or selection-type column, say); the rows still
+    # extract, so nothing else would notice its data being dropped.
+    unmapped = collections.defaultdict(list)
     last_caption = None
 
     for pno in range(first, last + 1):
@@ -263,6 +271,10 @@ def extract(pdf, first, last):
                     if missing:
                         problems.append(f"p{pno} header@{top:.0f} missing {missing}")
                         cur_map = None
+                    else:
+                        for c, t in header_text(band, bounds).items():
+                            if t and c not in cur_map.values() and pno not in unmapped[t]:
+                                unmapped[t].append(pno)
                 continue
             if cur_map is None or cur_bounds is None:
                 continue
@@ -341,7 +353,7 @@ def extract(pdf, first, last):
                 "desc": cell("desc"),
                 "caption": cap,
             })
-    return rows, problems
+    return rows, problems, unmapped
 
 
 def main():
@@ -354,7 +366,7 @@ def main():
 
     doc = open_doc(a.pdf)
     first, last = a.first or 1, a.last or doc.page_count
-    rows, problems = extract(a.pdf, first, last)
+    rows, problems, unmapped = extract(a.pdf, first, last)
 
     dups = [c for c, n in collections.Counter(r["code"] for r in rows).items() if n > 1]
     print(f"pages {first}-{last}")
@@ -364,6 +376,12 @@ def main():
     print(f"problems: {len(problems)}")
     for p in problems[:40]:
         print("  ", p)
+    print(f"header columns with no role: {len(unmapped)}")
+    for t, pages in sorted(unmapped.items(), key=lambda kv: kv[1][0]):
+        print(f"   {t!r} on {len(pages)} pages, first p{pages[0]}")
+    if unmapped:
+        print("   -> a column the scripts do not know. Its data is NOT in rows.json.")
+        print("      Render one of those pages and decide (references/booklet-layout.md §13).")
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(rows, f, ensure_ascii=False, indent=1)
     print("wrote", a.out)

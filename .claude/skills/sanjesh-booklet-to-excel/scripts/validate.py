@@ -17,6 +17,7 @@ from pdfgrid import open_doc, page_words, page_rects
 from extract_rows import code_columns
 
 CODE_RE = re.compile(r"^\d{5}$")
+REQUIRED = ("کد رشته محل", "عنوان رشته", "دوره تحصیلی", "جنس پذیرش", "دانشگاه / مؤسسه")
 LOW_CARD = ("نحوه پذیرش", "دوره تحصیلی", "جنس پذیرش", "نوع دانشگاه", "زیرمجموعه", "استان")
 
 
@@ -107,6 +108,20 @@ def main():
                 print(f"     {v:6d}  {k!r}")
         noprov = sum(1 for r in fin if not r["استان"])
         print(f"\n  rows with no استان: {noprov}")
+        # A column people filter on must never be blank. An empty دوره تحصیلی
+        # means a section whose tables have no دوره column got "dore": null in
+        # sections.json — the usual slip when a new year's config is written.
+        blank = {c: sum(1 for r in fin if not r[c]) for c in REQUIRED}
+        print(f"  rows with a blank required column: {blank}")
+        for c, n in blank.items():
+            if n:
+                print(f"    -> {n} rows have no {c!r}; see the sections.json keys "
+                      "(dore / nahve) or the column mapping")
+        nonahve = sum(1 for r in fin if not r["نحوه پذیرش"])
+        print(f"  rows with no نحوه پذیرش: {nonahve} (tables with no such column, e.g. "
+              "شهید رجایی; allowed — give the section a \"nahve\" key only if the booklet states it)")
+        zero = sum(1 for r in fin if not r["ظرفیت کل"])
+        print(f"  rows with ظرفیت کل 0: {zero}" + (" -> check the ظرفیت columns" if zero else ""))
         print(f"  distinct دانشگاه / مؤسسه: {len({r['دانشگاه / مؤسسه'] for r in fin})}")
         print(f"  distinct عنوان رشته: {len({r['عنوان رشته'] for r in fin})}")
         print(f"  total ظرفیت کل: {sum(r['ظرفیت کل'] for r in fin)}")
@@ -114,7 +129,7 @@ def main():
                if re.search(r"(دانشگاه|دانشکده|موسسه|مؤسسه|مرکز|واحد)\s*$", k)]
         print(f"  institution names ending in an institution word "
               f"(word-order bug): {len(odd)} {odd[:5]}")
-        if noprov or odd:
+        if noprov or odd or any(blank.values()):
             ok = False
 
     print("\n" + ("PASS" if ok else "FAIL"))
