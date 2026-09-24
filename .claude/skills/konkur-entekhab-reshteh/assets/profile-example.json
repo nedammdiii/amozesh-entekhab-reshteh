@@ -4,12 +4,36 @@
   "native_province": "فارس",
   "home_city": "شیراز",
   "allowed_courses": [],
+  "course_order": [
+    [
+      "روزانه",
+      "روزانه - غیردولتی"
+    ],
+    "شهریه پرداز",
+    [
+      "آزاد تمام وقت",
+      "خودگردان آزاد"
+    ],
+    "پردیس خودگردان",
+    "نوبت دوم"
+  ],
+  "course_priority": "within_field",
   "priority": "field",
-  "preferred_provinces": ["فارس", "بوشهر", "کهگیلویه و بویراحمد", "هرمزگان", "اصفهان", "یزد", "تهران"],
+  "preferred_provinces": [
+    "فارس",
+    "بوشهر",
+    "کهگیلویه و بویراحمد",
+    "هرمزگان",
+    "اصفهان",
+    "یزد",
+    "تهران"
+  ],
   "preferred_universities": [],
   "excluded_provinces": [],
   "excluded_universities": [],
-  "accept_commitment": ["فارس"],
+  "accept_commitment": [
+    "فارس"
+  ],
   "accept_interview": false,
   "accept_start_1406": true,
   "accept_start_bahman": true,
@@ -18,13 +42,27 @@
   "retake_next_year": false,
   "max_codes": 150,
   "choices": [
-    {"title": "دکتری عمومی پزشکی"},
-    {"title": "دکتری عمومی دندانپزشکی"},
-    {"title": "دکتری عمومی داروسازی"},
-    {"title": "فیزیوتراپی"},
-    {"title": "علوم آزمایشگاهی"},
-    {"title": "بینایی سنجی"},
-    {"title": "علوم تغذیه"}
+    {
+      "title": "دکتری عمومی پزشکی"
+    },
+    {
+      "title": "دکتری عمومی دندانپزشکی"
+    },
+    {
+      "title": "دکتری عمومی داروسازی"
+    },
+    {
+      "title": "فیزیوتراپی"
+    },
+    {
+      "title": "علوم آزمایشگاهی"
+    },
+    {
+      "title": "بینایی سنجی"
+    },
+    {
+      "title": "علوم تغذیه"
+    }
   ],
   "notes": "از فرم تلگرام: پرستاری و مامایی نمی‌خواهد؛ انتخاب رشتهٔ آزاد (غیرپزشکی) را هم می‌خواهد."
 }

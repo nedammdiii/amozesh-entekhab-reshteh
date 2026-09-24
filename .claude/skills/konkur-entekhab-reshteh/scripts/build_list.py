@@ -135,6 +135,8 @@ def main():
     step(~df["کد رشته محل"].duplicated(), "حذف کدهای تکراری بین گروه‌ها")
 
     allowed = as_list(prof.get("allowed_courses"))  # خالی = همهٔ دوره‌ها (شهریه فیلتر نمی‌شود)
+    if not allowed and prof.get("course_order"):  # اگر فقط ترتیب دوره‌ها آمده، همان‌ها مجازند
+        allowed = [x for c in as_list(prof["course_order"]) for x in as_list(c)]
     choices = prof.get("choices") or []
     if not choices:
         raise SystemExit("پروفایل «choices» ندارد؛ رشته‌های مورد علاقهٔ داوطلب را به ترتیب وارد کنید.")
@@ -185,6 +187,21 @@ def main():
     prov_pref = [str(x) for x in as_list(prof.get("preferred_provinces"))]
     uni_pref = [norm(x) for x in as_list(prof.get("preferred_universities"))]
     home = norm(prof.get("home_city", ""))
+    mode = prof.get("priority", "field")
+
+    # اولویت دوره‌ها: course_order به ترتیب دلخواه داوطلب (هر عضو یک دوره یا فهرستی از دوره‌های هم‌رتبه)
+    course_order = as_list(prof.get("course_order"))
+    crank = {norm(x): i for i, c in enumerate(course_order) for x in as_list(c)}
+    df["_course_rank"] = df["دوره تحصیلی"].map(lambda v: crank.get(norm(v), len(course_order)))
+    cmode = prof.get("course_priority", "within_field" if course_order else "tiebreak")
+    if not course_order:
+        course_weight = 0.0
+    elif cmode == "within_field" and mode != "field":
+        course_weight = 2.0  # در حالت شهر/متعادل، دورهٔ پایین‌تر امتیاز مکان را کم می‌کند
+    elif cmode == "tiebreak":
+        course_weight = 0.3
+    else:
+        course_weight = 0.0  # course_first و within_field در حالت رشته با کلید مرتب‌سازی اعمال می‌شوند
 
     def place(r):
         s = rank_score(prov_pref, r["استان"]) or 0.0
@@ -192,19 +209,26 @@ def main():
         s += u if u is not None else {1: 2.0, 2: 1.0, 3: 0.0}[uni_tier(r["_uni"], extra_tiers)]
         if home and home in r["_uni"] and "(" not in r["_uni"]:
             s += 1
-        # در یک دانشگاه و رشته، روزانه جلوتر از دوره‌های دیگر بیاید (فقط ترتیب؛ چیزی حذف نمی‌شود)
-        s -= 0.5 * r["شهریه‌ای"] + 1.0 * r["تعهد خدمت"] + 0.3 * (r["شروع"] != "مهر")
+        if course_order:
+            s -= course_weight * r["_course_rank"]
+        else:
+            s -= 0.5 * r["شهریه‌ای"]  # بدون ترتیب دوره: در یک دانشگاه و رشته، روزانه کمی جلوتر
+        s -= 1.0 * r["تعهد خدمت"] + 0.3 * (r["شروع"] != "مهر")
         return round(s, 2)
 
     df["_place"] = df.apply(place, axis=1) if len(df) else []
-    mode = prof.get("priority", "field")
     if mode == "place":
-        df = df.sort_values(["_place", "_choice", "کد رشته محل"], ascending=[False, True, True])
+        keys, asc = ["_place", "_choice"], [False, True]
     elif mode == "balanced":
         df["_key"] = df["_choice"] - 0.5 * df["_place"]
-        df = df.sort_values(["_key", "_choice", "کد رشته محل"])
+        keys, asc = ["_key", "_choice"], [True, True]
+    elif course_order and cmode == "within_field":
+        keys, asc = ["_choice", "_course_rank", "_place"], [True, True, False]
     else:
-        df = df.sort_values(["_choice", "_place", "کد رشته محل"], ascending=[True, False, True])
+        keys, asc = ["_choice", "_place"], [True, False]
+    if course_order and cmode == "course_first":
+        keys, asc = ["_course_rank"] + keys, [True] + asc
+    df = df.sort_values(keys + ["کد رشته محل"], ascending=asc + [True])
     df["_rank"] = range(len(df))
 
     # سقف اختیاری هر ورودی («max»)
