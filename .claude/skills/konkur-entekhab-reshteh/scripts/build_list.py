@@ -1,13 +1,14 @@
 """ساخت لیست حداکثر ۱۵۰تایی انتخاب رشته از اکسل دفترچه + پروفایل داوطلب (JSON).
 
-بازهٔ «خوشبینانه / واقع‌بینانه / بدبینانه» را مشاور تعیین می‌کند و در پروفایل می‌آید؛
-این اسکریپت شانس قبولی را تخمین نمی‌زند. ترتیب لیست فقط بر اساس ترجیح داوطلب است.
+فقط بر اساس جواب‌های خود داوطلب کار می‌کند: شانس قبولی تخمین زده نمی‌شود و شهریه
+هیچ کدی را حذف نمی‌کند. ترتیب لیست همان ترتیب علاقهٔ داوطلب است و اگر کدها بیشتر از
+سقف بود، جاها بین رشته‌های او تقسیم می‌شود تا هر رشته‌ای که نوشته در لیست بیاید.
 
 نمونه:
     python build_list.py --booklet tajrobi-1405.xlsx --profile profile.json --out-dir out --name sara
     python build_list.py --booklet tajrobi.xlsx --booklet zaban.xlsx --profile p.json   # چند گروه
 
-قالب پروفایل: assets/profile-example.json و assets/intake-form.md
+قالب پروفایل: assets/profile-example.json، کلیدها در assets/profile-keys.md و فرم در assets/telegram-form.md
 """
 import argparse
 import json
@@ -20,11 +21,7 @@ from openpyxl.utils import get_column_letter
 
 from booklet import WITH_EXAM, load_booklet, load_json, norm, province_pattern
 
-TIERS = ["خوشبینانه", "واقع‌بینانه", "بدبینانه"]
-DEFAULT_CAPS = {"خوشبینانه": 40, "واقع‌بینانه": 80, "بدبینانه": 30}
-REFILL_ORDER = ["واقع‌بینانه", "بدبینانه", "خوشبینانه"]  # جای خالی یک سطح اول به این‌ها می‌رسد
-
-# سطح‌بندی پیش‌فرض دانشگاه‌ها (فقط برای ترتیب درون یک ورودی؛ پروفایل می‌تواند اضافه کند)
+# سطح‌بندی پیش‌فرض دانشگاه‌ها (فقط برای ترتیب درون یک رشته؛ پروفایل می‌تواند اضافه کند)
 UNI_TIER1 = ["علوم پزشکی تهران", "شهید بهشتی", "علوم پزشکی ایران", "علوم پزشکی شیراز",
              "علوم پزشکی اصفهان", "علوم پزشکی مشهد", "علوم پزشکی تبریز", "علوم توانبخشی",
              "صنعتی شریف", "دانشگاه تهران", "صنعتی امیرکبیر", "علم و صنعت", "صنعتی اصفهان",
@@ -33,18 +30,10 @@ UNI_TIER3 = ["دانشکده", "پیام نور", "غیرانتفاعی", "مل�
              "شاهرود", "سبزوار", "زابل", "جهرم", "فسا", "آبادان", "خراسان شمالی", "نیشابور",
              "ایرانشهر", "جیرفت", "علوم پزشکی بم", "یاسوج"]
 
-FLAG_COLS = ["تعهد خدمت", "شهریه‌ای", "مصاحبه/شرایط خاص", "فقط بومی", "ظرفیت کم", "محرومیت کنکور بعد"]
+FLAG_COLS = ["تعهد خدمت", "مصاحبه/شرایط خاص", "فقط بومی", "ظرفیت کم", "محرومیت کنکور بعد"]
 OUT_COLS = ["اولویت", "کد رشته محل", "عنوان رشته", "دانشگاه / مؤسسه", "استان", "دوره تحصیلی",
-            "جنس پذیرش", "شروع", "ظرفیت کل", "سطح (مشاور)"] + FLAG_COLS + [
+            "جنس پذیرش", "شروع", "ظرفیت کل", "ردیف علاقه"] + FLAG_COLS + [
             "شرط بومی / سهمیه", "توضیحات", "صفحه PDF"]
-
-
-def tier_name(x):
-    t = norm(x).replace(" ", "")
-    for prefix, name in (("خوش", TIERS[0]), ("واقع", TIERS[1]), ("بد", TIERS[2])):
-        if t.startswith(prefix):
-            return name
-    raise SystemExit(f"سطح نامعتبر در پروفایل: «{x}» (یکی از {TIERS})")
 
 
 def as_list(v):
@@ -60,7 +49,8 @@ def entry_mask(df, e, allowed_courses):
     if e.get("title_contains"):
         m &= df["_title"].str.contains(norm(e["title_contains"]), regex=False)
     courses = as_list(e.get("courses")) or allowed_courses
-    m &= df["دوره تحصیلی"].isin(courses)
+    if courses:
+        m &= df["دوره تحصیلی"].isin(courses)
     unis = [norm(u) for u in as_list(e.get("universities"))]
     if unis:
         m &= df["_uni"].map(lambda u: any(x in u for x in unis))
@@ -94,6 +84,32 @@ def rank_score(names, value):
     return None
 
 
+def allocate(avail, max_codes):
+    """تقسیم جاهای لیست بین رشته‌ها: وزن رشتهٔ بالاتر بیشتر، ولی هر رشته حداقل یک جا.
+
+    avail: {ردیف ورودی: تعداد کد موجود} به ترتیب علاقه. جای خالی رشته‌ای که کد کافی ندارد
+    به بقیه می‌رسد.
+    """
+    order = list(avail)
+    n = len(order)
+    weight = {g: n - i for i, g in enumerate(order)}  # خطی: اولی n، آخری ۱
+    alloc = {g: 0 for g in order}
+    remaining = max_codes
+    active = [g for g in order if avail[g] > 0]
+    while remaining > 0 and active:
+        total_w = sum(weight[g] for g in active)
+        budget = remaining
+        for g in active:
+            want = max(1, int(budget * weight[g] / total_w))
+            take = min(want, avail[g] - alloc[g], remaining)
+            alloc[g] += take
+            remaining -= take
+            if remaining == 0:
+                break
+        active = [g for g in active if alloc[g] < avail[g]]
+    return alloc
+
+
 def main():
     ap = argparse.ArgumentParser(description="ساخت لیست ۱۵۰تایی انتخاب رشته")
     ap.add_argument("--booklet", action="append", required=True, help="اکسل دفترچه (برای چند گروه تکرار شود)")
@@ -106,8 +122,7 @@ def main():
     prof = load_json(a.profile)
     cmap = load_json(a.column_map) if a.column_map else None
     frames = [load_booklet(b, cmap) for b in a.booklet]
-    booklet_warns = [f"{Path(b).name}: {w}" for b, f in zip(a.booklet, frames)
-                     for w in f.attrs.get("warnings", [])]
+    booklet_warns = [f"{Path(b).name}: {w}" for b, f in zip(a.booklet, frames) for w in f.attrs.get("warnings", [])]
     df = pd.concat(frames, ignore_index=True)
     steps = [("کل ردیف‌های دفترچه", len(df))]
 
@@ -119,12 +134,12 @@ def main():
     step(df["نحوه پذیرش"] == WITH_EXAM, "فقط «با آزمون» (کدهای فرم ۱۵۰تایی)")
     step(~df["کد رشته محل"].duplicated(), "حذف کدهای تکراری بین گروه‌ها")
 
-    allowed = as_list(prof.get("allowed_courses")) or sorted(df["دوره تحصیلی"].unique())
+    allowed = as_list(prof.get("allowed_courses"))  # خالی = همهٔ دوره‌ها (شهریه فیلتر نمی‌شود)
     choices = prof.get("choices") or []
     if not choices:
-        raise SystemExit("پروفایل «choices» ندارد؛ رشته‌ها و بازهٔ مشاور را وارد کنید.")
+        raise SystemExit("پروفایل «choices» ندارد؛ رشته‌های مورد علاقهٔ داوطلب را به ترتیب وارد کنید.")
 
-    # تطبیق هر کد با اولین ورودی سازگار از بازهٔ مشاور
+    # هر کد به اولین ورودیِ سازگار (به ترتیب علاقه) تعلق می‌گیرد
     df = df.copy()
     df["_choice"] = -1
     entry_hits = []
@@ -132,8 +147,8 @@ def main():
         m = entry_mask(df, e, allowed) & (df["_choice"] == -1)
         df.loc[m, "_choice"] = i
         entry_hits.append(int(m.sum()))
-    step(df["_choice"] >= 0, "در بازهٔ مشاور (رشته، دانشگاه، دوره، استان)")
-    df["سطح (مشاور)"] = df["_choice"].map(lambda i: tier_name(choices[i].get("tier", "واقع‌بینانه")))
+    step(df["_choice"] >= 0, "در رشته‌های مورد علاقهٔ داوطلب (و دوره‌های مجاز)")
+    df["ردیف علاقه"] = df["_choice"] + 1
     df["_will_enroll"] = df["_choice"].map(lambda i: bool(choices[i].get("will_enroll", True)))
 
     gender = prof.get("gender", "")
@@ -150,15 +165,22 @@ def main():
     commit = prof.get("accept_commitment", False)
     if commit is not True:
         step(~df["تعهد خدمت"] | df["استان"].isin(as_list(commit)), "تعهد خدمت فقط با رضایت (و در استان‌های مجاز)")
+    if prof.get("accept_start_1406") is False:
+        step(df["شروع"] != "مهر ۱۴۰۶", "حذف کدهای شروع مهر ۱۴۰۶")
+    if prof.get("accept_start_bahman") is False:
+        step(df["شروع"] != "بهمن", "حذف کدهای ورودی بهمن")
     if prof.get("excluded_provinces"):
         step(~df["استان"].isin(prof["excluded_provinces"]), "حذف استان‌های ناخواسته")
+    ex_unis = [norm(u) for u in as_list(prof.get("excluded_universities"))]
+    if ex_unis:
+        step(~df["_uni"].map(lambda u: any(x in u for x in ex_unis)), "حذف دانشگاه‌ها یا شهرهای ناخواسته")
     if prof.get("exclude_codes"):
         step(~df["کد رشته محل"].isin([str(c) for c in prof["exclude_codes"]]), "حذف کدهای دستی")
     if prof.get("retake_next_year"):
         step(~df["محرومیت کنکور بعد"] | df["_will_enroll"],
              "حذف کدهای دارای محرومیت که داوطلب در آن‌ها ثبت‌نام نمی‌کند")
 
-    # ترتیب: فقط ترجیح داوطلب (ورودی‌ها به ترتیب علاقه + مکان و دانشگاه)
+    # ترتیب: فقط خواست داوطلب (ردیف علاقه + استان، دانشگاه و شهر)
     extra_tiers = {k: [norm(x) for x in v] for k, v in (prof.get("university_tiers") or {}).items()}
     prov_pref = [str(x) for x in as_list(prof.get("preferred_provinces"))]
     uni_pref = [norm(x) for x in as_list(prof.get("preferred_universities"))]
@@ -170,7 +192,8 @@ def main():
         s += u if u is not None else {1: 2.0, 2: 1.0, 3: 0.0}[uni_tier(r["_uni"], extra_tiers)]
         if home and home in r["_uni"] and "(" not in r["_uni"]:
             s += 1
-        s -= 1.0 * r["شهریه‌ای"] + 1.0 * r["تعهد خدمت"] + 0.3 * (r["شروع"] != "مهر")
+        # در یک دانشگاه و رشته، روزانه جلوتر از دوره‌های دیگر بیاید (فقط ترتیب؛ چیزی حذف نمی‌شود)
+        s -= 0.5 * r["شهریه‌ای"] + 1.0 * r["تعهد خدمت"] + 0.3 * (r["شروع"] != "مهر")
         return round(s, 2)
 
     df["_place"] = df.apply(place, axis=1) if len(df) else []
@@ -184,7 +207,7 @@ def main():
         df = df.sort_values(["_choice", "_place", "کد رشته محل"], ascending=[True, False, True])
     df["_rank"] = range(len(df))
 
-    # سقف اختیاری هر ورودی («max»): فقط بهترین کدهای آن ورودی (بر اساس ترجیح) می‌مانند
+    # سقف اختیاری هر ورودی («max»)
     capped = pd.Series(False, index=df.index)
     for i, e in enumerate(choices):
         if e.get("max") is not None:
@@ -193,55 +216,40 @@ def main():
     if capped.any():
         step(~capped, "اعمال سقف تعداد کد هر ورودی (max)")
 
-    # انتخاب حداکثر max_codes با سقف هر سطح (جای خالی به سطوح دیگر می‌رسد)
+    # انتخاب حداکثر max_codes: جاها بین رشته‌ها تقسیم می‌شود، بهترین‌های هر رشته می‌مانند
     max_codes = int(prof.get("max_codes", 150))
-    caps = {TIERS[i]: v for i, v in enumerate(DEFAULT_CAPS.values())}
-    caps.update({tier_name(k): int(v) for k, v in (prof.get("tier_caps") or {}).items()})
-    total = sum(caps.values()) or 1
-    caps = {k: round(v * max_codes / total) for k, v in caps.items()}
     if len(df) <= max_codes:
         final = df
     else:
-        picked = []
-        for t in TIERS:
-            picked.append(df[df["سطح (مشاور)"] == t].head(caps.get(t, 0)))
-        final = pd.concat(picked)
-        for t in REFILL_ORDER:
-            if len(final) >= max_codes:
-                break
-            rest = df.drop(final.index)
-            final = pd.concat([final, rest[rest["سطح (مشاور)"] == t].head(max_codes - len(final))])
+        avail = df.groupby("_choice").size().reindex(range(len(choices)), fill_value=0)
+        alloc = allocate({i: int(avail[i]) for i in range(len(choices))}, max_codes)
+        final = pd.concat([df[df["_choice"] == i].head(k) for i, k in alloc.items() if k])
         final = final.sort_values("_rank")
     final = final.head(max_codes).copy()
     final.insert(0, "اولویت", range(1, len(final) + 1))
-    dropped = df.drop(final.index)["سطح (مشاور)"].value_counts().to_dict()
 
     # هشدارها
     warns = list(booklet_warns)
+    per_entry = []
     for i, (e, n) in enumerate(zip(choices, entry_hits)):
+        in_pool = int((df["_choice"] == i).sum())
         kept = int((final["_choice"] == i).sum())
         label = e.get("title") or e.get("title_contains")
+        per_entry.append((i + 1, label, in_pool, kept))
         if n == 0:
             warns.append(f"ورودی {i + 1} («{label}») با هیچ کدی جور نشد؛ نام دقیق را با "
                          f"inspect_booklet.py --search پیدا کنید یا شرط‌هایش را بازتر کنید.")
-        elif kept == 0:
-            warns.append(f"ورودی {i + 1} («{label}») {n} کد داشت ولی همه با فیلترها یا سقف حذف شدند.")
-    tiers_now = final["سطح (مشاور)"].value_counts()
-    min_safe = int(prof.get("min_pessimistic", 15))
-    if tiers_now.get("بدبینانه", 0) < min_safe:
-        warns.append(f"فقط {tiers_now.get('بدبینانه', 0)} کد «بدبینانه» در لیست است (کمتر از {min_safe}). "
-                     "اگر داوطلب می‌خواهد حتماً امسال قبول شود، از مشاور رشته‌های بدبینانهٔ بیشتری بگیرید.")
+        elif in_pool == 0:
+            warns.append(f"ورودی {i + 1} («{label}») {n} کد داشت ولی همه با فیلترها حذف شدند.")
     if len(final) < max_codes:
-        warns.append(f"لیست {len(final)} کد دارد (کمتر از {max_codes}). مشکلی نیست، ولی برای پوشش بیشتر می‌شود "
-                     "رشته یا دانشگاه‌های بدبینانهٔ دیگری اضافه کرد.")
-    if dropped:
-        warns.append("به خاطر سقف لیست حذف شد: " + "، ".join(f"{k}: {v}" for k, v in dropped.items())
-                     + " (کمترین ترجیح هر سطح حذف شده است).")
+        warns.append(f"لیست {len(final)} کد دارد (کمتر از {max_codes})؛ همهٔ کدهای مناسب رشته‌های داوطلب در لیست آمده است.")
+    elif len(df) > len(final):
+        warns.append(f"{len(df) - len(final)} کد مناسب دیگر به خاطر سقف {max_codes} کنار رفت "
+                     "(از هر رشته، کدهای با ترجیح کمتر).")
     counts = {c: int(final[c].sum()) for c in FLAG_COLS}
     info = [
         (counts["محرومیت کنکور بعد"], "کد محرومیت از کنکور سال بعد دارند (روزانه، یا پزشکی/دندان/دارو/دامپزشکی در هر دوره)."),
         (counts["تعهد خدمت"], "کد تعهد خدمت دارند."),
-        (counts["شهریه‌ای"], "کد شهریه‌ای‌اند."),
         (counts["مصاحبه/شرایط خاص"], "کد مصاحبه/گزینش/بورس دارند."),
         (counts["فقط بومی"], "کد «مخصوص بومی» هستند؛ شرط بومی بودن داوطلب را تأیید کنید."),
         (counts["ظرفیت کم"], "کد ظرفیت ۱ یا ۲ نفر دارند."),
@@ -251,28 +259,29 @@ def main():
 
     out = Path(a.out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    write_xlsx(out / f"{a.name}.xlsx", final, prof, steps, warns)
-    write_md(out / f"{a.name}.md", final, prof, steps, warns, a.name)
+    write_xlsx(out / f"{a.name}.xlsx", final, prof, steps, warns, per_entry)
+    write_md(out / f"{a.name}.md", final, prof, steps, warns, per_entry, a.name)
 
     print("\n".join(f"{t}: {n:,}" for t, n in steps))
-    print("سطح‌ها در لیست نهایی:", final["سطح (مشاور)"].value_counts().to_dict())
     print("کدها در لیست نهایی:", len(final))
+    print("سهم هر رشته (ورودی، عنوان، کد مناسب، در لیست):")
+    for r in per_entry:
+        print("  ", r)
     print("\nهشدارها:\n- " + "\n- ".join(warns))
     print("\nخروجی:", out / f"{a.name}.xlsx", out / f"{a.name}.md")
 
 
 def cell_value(v):
-    if isinstance(v, (bool,)) or type(v).__name__ == "bool_":
+    if type(v).__name__ in ("bool", "bool_"):
         return "✓" if v else ""
     if hasattr(v, "item"):
         v = v.item()
     return "" if v is None or (isinstance(v, float) and pd.isna(v)) else v
 
 
-def write_xlsx(path, final, prof, steps, warns):
+def write_xlsx(path, final, prof, steps, warns, per_entry):
     font, bold = Font(name="Arial", size=10), Font(name="Arial", size=10, bold=True)
     head = PatternFill("solid", fgColor="D9D9D9")
-    fills = {"خوشبینانه": "FCE5CD", "واقع‌بینانه": "FFF2CC", "بدبینانه": "D9EAD3"}
     wb = Workbook()
 
     def sheet(title, first=False):
@@ -292,13 +301,11 @@ def write_xlsx(path, final, prof, steps, warns):
 
     ws = sheet("لیست", first=True)
     put(ws, 1, OUT_COLS, True)
-    tier_col = OUT_COLS.index("سطح (مشاور)") + 1
     for r, (_, row) in enumerate(final.iterrows(), 2):
         put(ws, r, [cell_value(row[c]) for c in OUT_COLS])
-        ws.cell(row=r, column=tier_col).fill = PatternFill("solid", fgColor=fills[row["سطح (مشاور)"]])
     ws.freeze_panes = "C2"
     ws.auto_filter.ref = f"A1:{get_column_letter(len(OUT_COLS))}{max(len(final), 1) + 1}"
-    for i, w in enumerate([7, 11, 24, 42, 15, 13, 9, 9, 8, 12, 9, 8, 12, 8, 8, 12, 40, 55, 8], 1):
+    for i, w in enumerate([7, 11, 24, 42, 15, 13, 9, 9, 8, 9, 9, 12, 8, 8, 12, 40, 55, 8], 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
     ws = sheet("خلاصه")
@@ -306,17 +313,10 @@ def write_xlsx(path, final, prof, steps, warns):
     col = {c: get_column_letter(OUT_COLS.index(c) + 1) for c in OUT_COLS}
     rng = lambda c: f"'لیست'!${col[c]}$2:${col[c]}${last}"  # noqa: E731
     r = 1
-    put(ws, r, ["سطح (مشاور)", "تعداد"], True)
-    for t in TIERS:
+    put(ws, r, ["ردیف علاقه", "رشته", "کد مناسب", "در لیست"], True)
+    for i, label, in_pool, _kept in per_entry:
         r += 1
-        put(ws, r, [t, f"=COUNTIF({rng('سطح (مشاور)')},A{r})"])
-    r += 1
-    put(ws, r, ["جمع", f"=SUM(B{r - 3}:B{r - 1})"], True)
-    r += 2
-    put(ws, r, ["رشته", "تعداد"], True)
-    for t in final["عنوان رشته"].drop_duplicates():
-        r += 1
-        put(ws, r, [t, f"=COUNTIF({rng('عنوان رشته')},A{r})"])
+        put(ws, r, [i, label, in_pool, f"=COUNTIF({rng('ردیف علاقه')},A{r})"])
     r += 2
     put(ws, r, ["دوره تحصیلی", "تعداد"], True)
     for t in final["دوره تحصیلی"].drop_duplicates():
@@ -332,8 +332,8 @@ def write_xlsx(path, final, prof, steps, warns):
     for t, n in steps:
         r += 1
         put(ws, r, [t, n])
-    ws.column_dimensions["A"].width = 55
-    ws.column_dimensions["B"].width = 16
+    for c, w in zip("ABCD", [45, 30, 12, 12]):
+        ws.column_dimensions[c].width = w
 
     ws = sheet("ورودی داوطلب")
     put(ws, 1, ["کلید", "مقدار"], True)
@@ -353,25 +353,26 @@ def write_xlsx(path, final, prof, steps, warns):
     wb.save(path)
 
 
-def write_md(path, final, prof, steps, warns, name):
+def write_md(path, final, prof, steps, warns, per_entry, name):
     L = []
     w = L.append
     w(f"# لیست انتخاب رشته — {prof.get('student_name', name)}\n")
     w(f"- تعداد کد: **{len(final)}**")
-    for t in TIERS:
-        w(f"- {t}: {int((final['سطح (مشاور)'] == t).sum())}")
     w(f"- نسخهٔ اکسل با همهٔ ستون‌ها: `{Path(path).with_suffix('.xlsx').name}`\n")
-    w("## هشدارها\n")
+    w("| ردیف علاقه | رشته | کد مناسب | در لیست |\n|---|---|---|---|")
+    for i, label, in_pool, kept in per_entry:
+        w(f"| {i} | {label} | {in_pool} | {kept} |")
+    w("\n## هشدارها\n")
     for x in warns:
         w(f"- {x}")
     w("- کدها را پیش از ثبت با دفترچهٔ رسمی و اطلاعیه‌های اصلاحی سنجش تطبیق دهید.\n")
     w("## لیست\n")
-    w("| # | کد | رشته | دانشگاه / محل تحصیل | دوره | شروع | سطح | نکته |")
-    w("|---|---|---|---|---|---|---|---|")
+    w("| # | کد | رشته | دانشگاه / محل تحصیل | دوره | شروع | نکته |")
+    w("|---|---|---|---|---|---|---|")
     for _, r in final.iterrows():
-        notes = [f for f in ["تعهد خدمت", "شهریه‌ای", "مصاحبه/شرایط خاص", "فقط بومی", "ظرفیت کم"] if r[f]]
+        notes = [f for f in ["تعهد خدمت", "مصاحبه/شرایط خاص", "فقط بومی", "ظرفیت کم"] if r[f]]
         w(f"| {r['اولویت']} | {r['کد رشته محل']} | {r['عنوان رشته']} | {r['دانشگاه / مؤسسه']} | "
-          f"{r['دوره تحصیلی']} | {r['شروع']} | {r['سطح (مشاور)']} | {'، '.join(notes)} |")
+          f"{r['دوره تحصیلی']} | {r['شروع']} | {'، '.join(notes)} |")
     w("\n## کدها برای ورود سریع (به ترتیب)\n")
     w("```")
     codes = final["کد رشته محل"].tolist()
