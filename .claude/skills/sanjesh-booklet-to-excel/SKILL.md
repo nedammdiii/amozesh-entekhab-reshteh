@@ -5,7 +5,9 @@ description: >
   رشته آزمون سراسری / کنکور) into a clean, filter-ready Persian Excel workbook —
   one row per کدرشته‌محل, with نحوه پذیرش, دوره تحصیلی, عنوان رشته, کد رشته,
   جنس پذیرش, استان, دانشگاه, نوع دانشگاه (پیام نور / غیرانتفاعی / آزاد / دولتی /
-  علوم پزشکی), ظرفیت and توضیحات as filterable columns. Works for any گروه آزمایشی
+  علوم پزشکی), ظرفیت and توضیحات as filterable columns, plus a dynamic «لیست ۱۵۰
+  انتخاب» sheet that builds the ordered 150-choice list from priority numbers the
+  counsellor types next to each row. Works for any گروه آزمایشی
   (تجربی، ریاضی، انسانی، هنر، زبان) and any year. Use this skill whenever the user
   mentions دفترچه انتخاب رشته, دفترچه سنجش, دفترچه کنکور, کدرشته‌محل, رشته‌محل,
   انتخاب رشته, sanjesh, entekhab reshte, or asks to turn a کنکور/admission booklet
@@ -137,14 +139,51 @@ python "$SK/scripts/make_xlsx.py" --final "$W/final.json" --out "OUT.xlsx" \
 python "$SK/scripts/verify_xlsx.py" --final "$W/final.json" --xlsx "OUT.xlsx"
 ```
 
-`verify_xlsx.py` must report `cell mismatches: 0`. Writing a cell is not proof
-it holds what you meant — this caught a real bug on the first booklet.
+`verify_xlsx.py` must report `cell mismatches: 0` and
+`choice-list formula faults: 0`, and exit 0. Writing a cell is not proof it
+holds what you meant — this caught a real bug on the first booklet.
 
-The workbook has three sheets: the data table (RTL, AutoFilter, frozen header),
-`خلاصه آماری` (COUNTIF/SUMIF, so it recalculates), and `راهنما`. The summary
-formulas have no cached values until Excel opens the file — that is expected.
-LibreOffice is usually unavailable on this machine, so do not promise
-pre-computed summary numbers.
+The workbook has four sheets:
+
+- `رشته محل ها` — the data table (RTL, Excel Table, AutoFilter). Column A is
+  the yellow input column **`اولویت انتخاب`**, shipped empty; the last column
+  **`کلید کمکی`** is a hidden helper formula.
+- `لیست ۱۵۰ انتخاب` — the dynamic choice list, second tab: it sorts every
+  row that has a priority number and shows the first 150, with a counter, the
+  remaining slots and warnings.
+- `خلاصه آماری` — COUNTIF/SUMIF, so it recalculates.
+- `راهنما` — column legend, including how to use the list.
+
+The list title reads the گروه and year from `--title`; pass `--group` /
+`--year` when the title does not say them. `--max-choices` changes 150 if the
+form's cap ever changes. `--no-choice-list` writes the old three-sheet
+workbook — same cells, values and styles as before the list existed.
+
+**Read `references/choice-list.md` before touching any list formula.** It
+records why each one looks the way it does (the `&""`, the ROW() tie-break,
+no FILTER/SORT/XLOOKUP, Persian-digit input).
+
+### 6b. Prove the choice list computes
+
+```bash
+python "$SK/scripts/test_choice_list.py" --xlsx "OUT.xlsx" --final "$W/final.json"
+```
+
+It types sample priorities into two **copies**, recalculates them with
+LibreOffice and checks the order, every listed field against its source row,
+the «تکراری» flag, the blank-not-«0» cells, the counter, the over-150 warning,
+the Persian-digit warning, the summary totals and that no cell holds an error.
+Expect `PASS`. The deliverable itself is never touched and must stay free of
+test priorities — `verify_xlsx.py` fails if the priority column is not empty.
+
+Exit code 2 means LibreOffice could not run: nothing was tested. Install
+`libreoffice-calc` if you can (a core-only LibreOffice cannot open xlsx — the
+script detects that instead of hanging); otherwise tell the user the list
+formulas were checked statically by `verify_xlsx.py` but not computed.
+
+Formula cells have no cached values until Excel opens the file
+(`fullCalcOnLoad` is set, so Excel computes them on open). Deliver the
+openpyxl file, not a LibreOffice re-save: the re-save is only for testing.
 
 ### 7. Spot-check before delivering
 
@@ -157,6 +196,14 @@ Report, in Persian:
 
 - row count and the **0 missing codes** result, naming the page range covered;
 - the column list and which sheets exist;
+- how to use the choice list, in two or three lines: type a priority number
+  in the yellow `اولویت انتخاب` column **with English digits** (a Persian-keyboard
+  «۱۲» is text to Excel and turns orange instead of joining the list); a
+  decimal such as 12.5 slots a row between 12 and 13; delete the number to
+  drop the row; the list sheet counts the choices and flags duplicates. If the
+  long توضیحات look cut off, select the list rows and use Home ← Format ←
+  AutoFit Row Height — Excel does not resize rows when a formula result changes;
+- whether `test_choice_list.py` passed, or that it could not run;
 - these two honest caveats, every time:
   - **`دوره تحصیلی` is inferred** for the sections whose tables have no such
     column. Say how many rows, and point at the `منبع دوره تحصیلی` column,
@@ -175,6 +222,10 @@ colours, caption grammar, the سهمیه‌ای trap, and the 1404 regression ba
 **Read it before editing any script.** Almost every line in `pdfgrid.py` and
 `extract_rows.py` exists to work around a specific documented defect; changes
 that look like simplifications tend to reintroduce silent corruption.
+
+`references/choice-list.md` — the dynamic 150-choice list: how the helper
+key, SMALL and INDEX/MATCH fit together, the traps each formula avoids, and
+what `test_choice_list.py` proves.
 
 `assets/sections-1404-tajrobi.json` and `assets/sections-1404-ryazi.json` are
 complete worked configs, and the reference doc carries the verified numbers for

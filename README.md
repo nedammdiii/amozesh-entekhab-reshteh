@@ -9,6 +9,9 @@
   - [`assets/telegram-form.md`](.claude/skills/konkur-entekhab-reshteh/assets/telegram-form.md): فرم تلگرام دانش‌آموز (برای کپی) و جدول تبدیل جواب‌ها
   - [`assets/`](.claude/skills/konkur-entekhab-reshteh/assets/): کلیدهای پروفایل و نمونهٔ پروفایل
 - **فایل آماده برای نصب:** [`dist/konkur-entekhab-reshteh.skill`](dist/konkur-entekhab-reshteh.skill)
+- **اسکیل تبدیل PDF دفترچه به اکسل:** [`.claude/skills/sanjesh-booklet-to-excel/`](.claude/skills/sanjesh-booklet-to-excel/) (فایل نصب: [`dist/sanjesh-booklet-to-excel.zip`](dist/sanjesh-booklet-to-excel.zip))
+  - PDF دفترچهٔ سنجش را به اکسل تمیز تبدیل می‌کند: هر کدرشته‌محل یک ردیف، با تست کامل‌بودن کدها در برابر PDF
+  - برگهٔ **«لیست ۱۵۰ انتخاب»** (لیست پویا): مشاور کنار هر ردیف در ستون زرد «اولویت انتخاب» عدد می‌نویسد و لیست مرتب ۱۵۰تایی خودکار ساخته می‌شود ([`references/choice-list.md`](.claude/skills/sanjesh-booklet-to-excel/references/choice-list.md))
 - **نمونهٔ خروجی (دادهٔ ۱۴۰۴، داوطلب فرضی):** [`examples/`](examples/)
 
 ## استفاده
